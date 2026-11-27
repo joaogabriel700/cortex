@@ -1,8 +1,7 @@
 <?php
 
+use App\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Cookie\Middleware\EncryptCookies;
-use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
-use Laravel\Sanctum\Http\Middleware\AuthenticateSession;
 use Laravel\Sanctum\Sanctum;
 
 return [
@@ -50,6 +49,9 @@ return [
     |
     */
 
+    // Replaced by the route in routes/web.php, which is rate limited.
+    'routes' => false,
+
     'expiration' => null,
 
     /*
@@ -79,9 +81,10 @@ return [
     */
 
     'middleware' => [
-        'authenticate_session' => AuthenticateSession::class,
+        // Not used: sessions are revoked through App\Auth\SessionMark.
+        'authenticate_session' => null,
         'encrypt_cookies' => EncryptCookies::class,
-        'validate_csrf_token' => ValidateCsrfToken::class,
+        'validate_csrf_token' => VerifyCsrfToken::class,
     ],
 
 ];

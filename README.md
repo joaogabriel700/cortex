@@ -95,3 +95,16 @@ docker compose up
 ```
 
 Abra <http://localhost:8080>. Não é preciso criar `.env`: os segredos são gerados na primeira execução. Para desenvolver com recarga automática use `make dev`; para os testes, `make test`. Atenção: `docker compose down -v` apaga todos os dados da demo.
+
+## User accounts
+
+There is no public sign up. With the stack running, create your account in a terminal
+(the password is asked in a hidden prompt, 12 to 72 characters):
+
+```sh
+docker compose exec api php artisan cortex:user:create
+docker compose exec api php artisan cortex:user:reset-password you@example.com
+```
+
+In development, add `-f compose.yaml -f compose.dev.yaml` after `docker compose`.
+Resetting a password signs the account out of every device.

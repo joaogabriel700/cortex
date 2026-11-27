@@ -12,7 +12,8 @@ function can(string $role, string $table, string $privilege): bool
 
 it('connects as app_runtime, which cannot get around row level security', function () {
     expect(app(RoleGuard::class)->inspect())->toBe([
-        'role' => 'app_runtime', 'superuser' => false, 'bypass_rls' => false, 'owned_tables' => 0, 'memberships' => 0,
+        'role' => 'app_runtime', 'session_role' => 'app_runtime', 'superuser' => false, 'bypass_rls' => false,
+        'can_create' => false, 'owned_tables' => 0, 'owned_other' => 0, 'memberships' => 0, 'usable_members' => 0,
     ]);
     expect(Artisan::call('db:assert-role'))->toBe(0);
 });
