@@ -1,0 +1,171 @@
+# Production on a single server (standalone file: nothing is inherited from the demo).
+#   docker compose -f compose.prod.yaml --profile local-db up -d
+# See .env.example. Secret files live outside the repository.
+name: cortex-prod
+
+x-hardening: &hardening
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "5" }
+
+x-app-env: &app-env
+  APP_NAME: Cortex
+  APP_ENV: production
+  APP_DEBUG: "false"
+  APP_URL: https://${APP_DOMAIN:?}
+  LOG_CHANNEL: stderr
+  LOG_LEVEL: info
+  DB_CONNECTION: pgsql
+  DB_HOST: ${DB_HOST:-db}
+  DB_PORT: ${DB_PORT:-5432}
+  DB_DATABASE: cortex
+  DB_USERNAME: app_runtime
+  DB_SSLMODE: ${DB_SSLMODE:-prefer} # external database: require or verify-full
+  QUEUE_CONNECTION: database
+  CACHE_STORE: database
+  SESSION_DRIVER: database
+  SESSION_ENCRYPT: "true"
+  SESSION_SECURE_COOKIE: "true"
+  SESSION_COOKIE: __Host-cortex_session # host-only, no SESSION_DOMAIN
+  SANCTUM_STATEFUL_DOMAINS: ${APP_DOMAIN}
+  TRUSTED_PROXIES: ${TRUSTED_PROXIES:?}
+  FILESYSTEM_DISK: ${FILESYSTEM_DISK:-local}
+  MAIL_MAILER: ${MAIL_MAILER:-log}
+  MAIL_HOST: ${MAIL_HOST:-}
+  MAIL_PORT: ${MAIL_PORT:-587}
+  MAIL_USERNAME: ${MAIL_USERNAME:-}
+  MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-}
+  VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+  VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+  APP_KEY_FILE: /run/secrets/app_key
+  DB_PASSWORD_FILE: /run/secrets/db_runtime_password
+  MAIL_PASSWORD_FILE: /run/secrets/mail_password
+  VAPID_PRIVATE_KEY_FILE: /run/secrets/vapid_private_key
+  DB_ASSERT_ROLE: "true"
+
+x-runtime-secrets: &runtime-secrets
+  - app_key
+  - db_runtime_password
+  - mail_password
+  - vapid_private_key
+
+x-php: &php
+  image: ghcr.io/${GHCR_OWNER:?}/cortex-api:${APP_VERSION:?} # never "latest"
+  environment: *app-env
+  secrets: *runtime-secrets
+  volumes: ["app_files:/app/storage/app"]
+  logging: *logging
+  <<: *hardening
+
+services:
+  db:
+    profiles: [local-db] # leave the profile out when the database is managed
+    image: postgres:18.7-trixie # pin the digest before the first deploy
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_superuser_password
+      APP_DB_NAME: cortex
+      APP_OWNER_PASSWORD_FILE: /run/secrets/db_owner_password
+      APP_RUNTIME_PASSWORD_FILE: /run/secrets/db_runtime_password
+      APP_MAINTENANCE_PASSWORD_FILE: /run/secrets/db_maintenance_password
+    secrets: [db_superuser_password, db_owner_password, db_runtime_password, db_maintenance_password]
+    volumes:
+      - db_data:/var/lib/postgresql
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    networks: [back]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d cortex"]
+      interval: 10s
+      retries: 30
+    logging: *logging
+
+  migrate:
+    <<: *php
+    command: ["release"]
+    restart: "no"
+    environment:
+      <<: *app-env
+      DB_USERNAME: app_owner
+      DB_PASSWORD_FILE: /run/secrets/db_owner_password
+      DB_ASSERT_ROLE: "false"
+    secrets: [app_key, db_owner_password, mail_password, vapid_private_key]
+    networks: [back, egress]
+    depends_on:
+      db: { condition: service_healthy, required: false }
+
+  api:
+    <<: *php
+    restart: unless-stopped
+    networks: [front, back, egress]
+    depends_on: &after-migrate
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/up"]
+      interval: 15s
+      retries: 5
+      start_period: 20s
+
+  worker:
+    <<: *php
+    command: ["php", "artisan", "queue:work", "--tries=3", "--timeout=60", "--max-time=3600"]
+    restart: unless-stopped
+    stop_grace_period: 90s
+    networks: [back, egress]
+    depends_on: *after-migrate
+    healthcheck: &heartbeat
+      test: ["CMD-SHELL", "find /tmp/heartbeat -mmin -3 | grep -q ."]
+      interval: 60s
+      start_period: 90s
+
+  scheduler:
+    <<: *php
+    command: ["php", "artisan", "schedule:work"]
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      DB_MAINTENANCE_USERNAME: app_maintenance
+      DB_MAINTENANCE_PASSWORD_FILE: /run/secrets/db_maintenance_password
+    secrets: [app_key, db_runtime_password, db_maintenance_password, mail_password, vapid_private_key]
+    networks: [back, egress]
+    depends_on: *after-migrate
+    healthcheck: *heartbeat
+
+  web:
+    image: ghcr.io/${GHCR_OWNER}/cortex-web:${APP_VERSION}
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${APP_DOMAIN}
+    ports: ["80:8080", "443:8443"]
+    volumes: ["caddy_data:/data"]
+    networks: [front]
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8081/healthz"]
+      interval: 15s
+    logging: *logging
+    <<: *hardening
+
+# Directory owned by root with mode 0700; files with mode 0444 (see .env.example).
+secrets:
+  app_key: { file: "${SECRETS_DIR:?}/app_key" }
+  db_superuser_password: { file: "${SECRETS_DIR}/db_superuser_password" }
+  db_owner_password: { file: "${SECRETS_DIR}/db_owner_password" }
+  db_runtime_password: { file: "${SECRETS_DIR}/db_runtime_password" }
+  db_maintenance_password: { file: "${SECRETS_DIR}/db_maintenance_password" }
+  mail_password: { file: "${SECRETS_DIR}/mail_password" }
+  vapid_private_key: { file: "${SECRETS_DIR}/vapid_private_key" }
+
+networks:
+  front: {}
+  back: { internal: true }
+  egress: {}
+
+volumes:
+  db_data: {}
+  app_files: {}
+  caddy_data: {}

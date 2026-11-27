@@ -1,0 +1,12 @@
+{
+  "scaffold": {
+    "tagline": "Project scaffold.",
+    "api": "API",
+    "language": "Language",
+    "status": {
+      "checking": "checking",
+      "ok": "working",
+      "unavailable": "unavailable"
+    }
+  }
+}

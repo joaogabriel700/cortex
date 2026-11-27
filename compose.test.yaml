@@ -1,0 +1,35 @@
+# API tests against a real PostgreSQL, in an isolated project (own database and secrets):
+#   make test-api
+# (build api-test first, then `run`: the other services reuse the image it builds)
+name: cortex-test
+
+services:
+  init-secrets:
+    image: cortex-api:test
+
+  db:
+    environment:
+      APP_DB_NAME: cortex_test
+
+  api-test:
+    image: cortex-api:test
+    build: { context: ./api, target: test }
+    pull_policy: build
+    entrypoint: ["/usr/local/bin/entrypoint"]
+    command: ["run-tests"]
+    environment:
+      APP_ENV: testing
+      APP_OPTIMIZE: "false"
+      APP_KEY_FILE: /run/app-secrets/runtime/app_key
+      DB_CONNECTION: pgsql
+      DB_HOST: db
+      DB_DATABASE: cortex_test
+      DB_USERNAME: app_runtime
+      DB_PASSWORD_FILE: /run/app-secrets/runtime/db_password
+      DB_OWNER_PASSWORD_FILE: /run/app-secrets/owner/db_password
+    volumes:
+      - secrets_runtime:/run/app-secrets/runtime:ro
+      - secrets_owner:/run/app-secrets/owner:ro
+    networks: [back]
+    depends_on:
+      db: { condition: service_healthy }

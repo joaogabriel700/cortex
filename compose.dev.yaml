@@ -1,0 +1,80 @@
+# Development with hot reload:
+#   docker compose -f compose.yaml -f compose.dev.yaml up --build   (or: make dev)
+name: cortex-dev # separate volumes from the demo
+
+x-dev-env: &dev-env
+  APP_ENV: local
+  APP_DEBUG: "true"
+  APP_URL: http://localhost:3000
+  SANCTUM_STATEFUL_DOMAINS: localhost:3000
+  APP_OPTIMIZE: "false" # never cache config in development
+  LOG_LEVEL: debug
+  MAIL_MAILER: smtp
+  MAIL_HOST: mailpit
+  MAIL_PORT: "1025"
+
+x-dev-php: &dev-php
+  image: cortex-api:dev
+  environment: *dev-env # merged with the base environment
+
+x-dev-code: &dev-code
+  - ./api:/app
+  - api_vendor:/app/vendor
+
+services:
+  init-secrets:
+    image: cortex-api:dev
+
+  db:
+    ports: ["127.0.0.1:${DEV_DB_PORT:-5432}:5432"]
+
+  migrate:
+    <<: *dev-php
+    volumes: *dev-code
+
+  api:
+    <<: *dev-php
+    build:
+      context: ./api
+      target: dev
+      args:
+        HOST_UID: "${HOST_UID:-1000}"
+        HOST_GID: "${HOST_GID:-1000}"
+    volumes: *dev-code
+
+  worker:
+    <<: *dev-php
+    # queue:listen reloads the code for every job
+    command: ["php", "artisan", "queue:listen", "--tries=1", "--timeout=60"]
+    volumes: *dev-code
+    healthcheck: { disable: true } # queue:listen does not emit the heartbeat
+
+  scheduler:
+    <<: *dev-php
+    volumes: *dev-code
+
+  web:
+    image: cortex-web:dev
+    build: { context: ./web, target: dev }
+    environment:
+      API_PROXY_TARGET: http://api:8080
+    ports: !override ["127.0.0.1:3000:3000"]
+    volumes:
+      - ./web:/app
+      - web_node_modules:/app/node_modules
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/"]
+      interval: 10s
+      retries: 30
+
+  mailpit:
+    image: axllent/mailpit:v1.34.0
+    ports: ["127.0.0.1:8025:8025"]
+    networks: [front, back, egress]
+
+networks:
+  back: { internal: false } # an internal network cannot publish the database port
+
+volumes:
+  api_vendor: {}
+  web_node_modules: {}

@@ -1,0 +1,190 @@
+# Local demo: `docker compose up`. Also the base for compose.dev.yaml and compose.test.yaml.
+# No .env file and no secret in the repository: random secrets are generated on the first run.
+name: cortex-demo
+
+x-hardening: &hardening
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+# Shared by every Laravel process. No secret values here.
+x-app-env: &app-env
+  APP_NAME: Cortex
+  APP_ENV: demo
+  APP_DEBUG: "false"
+  APP_URL: http://localhost:8080
+  LOG_CHANNEL: stderr
+  DB_CONNECTION: pgsql
+  DB_HOST: db
+  DB_PORT: "5432"
+  DB_DATABASE: cortex
+  DB_USERNAME: app_runtime
+  QUEUE_CONNECTION: database
+  CACHE_STORE: database
+  SESSION_DRIVER: database
+  SESSION_ENCRYPT: "true"
+  SESSION_SECURE_COOKIE: "false" # the demo is plain HTTP on localhost
+  SANCTUM_STATEFUL_DOMAINS: localhost:8080
+  TRUSTED_PROXIES: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+  FILESYSTEM_DISK: local
+  MAIL_MAILER: log
+  APP_KEY_FILE: /run/app-secrets/runtime/app_key
+  DB_PASSWORD_FILE: /run/app-secrets/runtime/db_password
+
+x-php: &php
+  image: cortex-api:local
+  pull_policy: never # built by the "api" service
+  environment: *app-env
+  logging: *logging
+  <<: *hardening
+
+# Each secret set has its own volume, so a container only sees what it needs.
+x-runtime-volumes: &runtime-volumes
+  - app_files:/app/storage/app
+  - secrets_runtime:/run/app-secrets/runtime:ro
+
+services:
+  # One-shot: creates random secrets once and never overwrites them.
+  init-secrets:
+    image: cortex-api:local
+    pull_policy: never
+    user: "0:0"
+    network_mode: none
+    entrypoint: ["/usr/local/bin/init-secrets"]
+    volumes:
+      - secrets_runtime:/run/app-secrets/runtime
+      - secrets_owner:/run/app-secrets/owner
+      - secrets_maintenance:/run/app-secrets/maintenance
+      - secrets_superuser:/run/app-secrets/superuser
+
+  db:
+    image: postgres:18.7-trixie
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres # superuser: bootstrap only, never used by the application
+      POSTGRES_PASSWORD_FILE: /run/app-secrets/superuser/password
+      APP_DB_NAME: cortex
+      APP_OWNER_PASSWORD_FILE: /run/app-secrets/owner/db_password
+      APP_RUNTIME_PASSWORD_FILE: /run/app-secrets/runtime/db_password
+      APP_MAINTENANCE_PASSWORD_FILE: /run/app-secrets/maintenance/db_password
+    volumes:
+      # PostgreSQL 18 images keep data in /var/lib/postgresql/18/docker: mount the parent.
+      - db_data:/var/lib/postgresql
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+      - secrets_superuser:/run/app-secrets/superuser:ro
+      - secrets_owner:/run/app-secrets/owner:ro
+      - secrets_runtime:/run/app-secrets/runtime:ro
+      - secrets_maintenance:/run/app-secrets/maintenance:ro
+    networks: [back]
+    healthcheck:
+      # TCP on purpose: the temporary server used during initialization only listens on a socket.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d $$APP_DB_NAME"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    depends_on:
+      init-secrets: { condition: service_completed_successfully }
+    logging: *logging
+
+  # One-shot: runs migrations as the schema owner.
+  migrate:
+    <<: *php
+    command: ["release"]
+    restart: "no"
+    environment:
+      <<: *app-env
+      DB_USERNAME: app_owner
+      DB_PASSWORD_FILE: /run/app-secrets/owner/db_password
+    networks: [back]
+    volumes:
+      - secrets_runtime:/run/app-secrets/runtime:ro
+      - secrets_owner:/run/app-secrets/owner:ro
+    depends_on:
+      db: { condition: service_healthy }
+
+  api:
+    <<: *php
+    build: { context: ./api, target: prod }
+    pull_policy: build
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      DB_ASSERT_ROLE: "true"
+    networks: [front, back]
+    volumes: *runtime-volumes
+    depends_on: &after-migrate
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/up"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+
+  worker:
+    <<: *php
+    command: ["php", "artisan", "queue:work", "--tries=3", "--timeout=60", "--max-time=3600"]
+    restart: unless-stopped
+    stop_grace_period: 90s
+    environment:
+      <<: *app-env
+      DB_ASSERT_ROLE: "true"
+    networks: [back, egress]
+    volumes: *runtime-volumes
+    depends_on: *after-migrate
+    healthcheck: &heartbeat
+      test: ["CMD-SHELL", "find /tmp/heartbeat -mmin -3 | grep -q ."]
+      interval: 15s
+      retries: 8
+      start_period: 90s
+
+  scheduler:
+    <<: *php
+    command: ["php", "artisan", "schedule:work"]
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      DB_ASSERT_ROLE: "true"
+      DB_MAINTENANCE_USERNAME: app_maintenance
+      DB_MAINTENANCE_PASSWORD_FILE: /run/app-secrets/maintenance/db_password
+    networks: [back]
+    volumes:
+      - app_files:/app/storage/app
+      - secrets_runtime:/run/app-secrets/runtime:ro
+      - secrets_maintenance:/run/app-secrets/maintenance:ro
+    depends_on: *after-migrate
+    healthcheck: *heartbeat
+
+  web:
+    image: cortex-web:local
+    build: { context: ./web, target: prod }
+    pull_policy: build
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ":8080"
+    ports: ["127.0.0.1:8080:8080"] # loopback only
+    networks: [front]
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8081/healthz"]
+      interval: 5s
+      retries: 12
+    logging: *logging
+    <<: *hardening
+
+networks:
+  front: {}
+  back: { internal: true }
+  egress: {}
+
+volumes:
+  db_data: {}
+  app_files: {}
+  secrets_runtime: {}
+  secrets_owner: {}
+  secrets_maintenance: {}
+  secrets_superuser: {}

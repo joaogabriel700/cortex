@@ -1,0 +1,12 @@
+{
+  "scaffold": {
+    "tagline": "Estrutura inicial do projeto.",
+    "api": "API",
+    "language": "Idioma",
+    "status": {
+      "checking": "verificando",
+      "ok": "funcionando",
+      "unavailable": "indisponível"
+    }
+  }
+}

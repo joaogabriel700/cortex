@@ -1,0 +1,104 @@
+{
+	admin off
+	http_port 8080
+	https_port 8443
+}
+
+# Internal health check, independent of the public site address
+:8081 {
+	respond /healthz "ok" 200
+}
+
+{$SITE_ADDRESS::8080} {
+	encode zstd gzip
+
+	header {
+		-Server
+		-Via
+		-X-Powered-By
+		X-Content-Type-Options "nosniff"
+		# same-origin, not no-referrer: Sanctum recognizes the app by Origin or Referer
+		Referrer-Policy "same-origin"
+		Cross-Origin-Resource-Policy "same-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		defer
+	}
+
+	# HSTS only when Caddy itself serves HTTPS
+	@https protocol https
+	header @https Strict-Transport-Security "max-age=31536000"
+
+	# /up is not published: the container health check calls the API directly.
+	@api path /api /api/* /sanctum/*
+	handle @api {
+		header {
+			Cache-Control "no-store"
+			Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
+			defer
+		}
+
+		# Request body limits per route (API contract). Everything else gets 64 KiB.
+		@restore path /api/v1/backup/restore
+		@upload path /api/v1/imports /api/v1/imports/inspect
+		@sync path /api/v1/sync/push
+		@confirm path_regexp ^/api/v1/imports/[^/]+/confirm$
+
+		handle @restore {
+			request_body {
+				max_size 21MiB
+			}
+			reverse_proxy api:8080
+		}
+		handle @upload {
+			request_body {
+				max_size 6MiB
+			}
+			reverse_proxy api:8080
+		}
+		handle @sync {
+			request_body {
+				max_size 1MiB
+			}
+			reverse_proxy api:8080
+		}
+		handle @confirm {
+			request_body {
+				max_size 512KiB
+			}
+			reverse_proxy api:8080
+		}
+		handle {
+			request_body {
+				max_size 64KiB
+			}
+			reverse_proxy api:8080
+		}
+	}
+
+	handle {
+		# Content-Security-Policy of the app, generated at build time with the script hashes
+		import /etc/caddy/csp.caddy
+
+		# Nuxt build manifest: always revalidate
+		handle /_nuxt/builds/* {
+			root * /srv
+			header Cache-Control "no-cache"
+			file_server
+		}
+
+		# Hashed assets: a missing file is a 404, never the HTML fallback
+		handle /_nuxt/* {
+			root * /srv
+			header Cache-Control "public, max-age=31536000, immutable"
+			file_server
+		}
+
+		# Pages, service worker and web manifest
+		handle {
+			root * /srv
+			header Cache-Control "no-cache"
+			try_files {path} {path}/index.html /200.html
+			file_server
+		}
+	}
+}
