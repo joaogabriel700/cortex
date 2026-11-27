@@ -30,6 +30,8 @@ services:
     volumes:
       - secrets_runtime:/run/app-secrets/runtime:ro
       - secrets_owner:/run/app-secrets/owner:ro
+      # Only in this throwaway project: one test grants roles as superuser (R1) and rolls back.
+      - secrets_superuser:/run/app-secrets/superuser:ro
     networks: [back]
     depends_on:
       db: { condition: service_healthy }
