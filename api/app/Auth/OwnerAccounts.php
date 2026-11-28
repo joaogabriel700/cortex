@@ -7,7 +7,9 @@ use App\Support\Tenancy\TenantContext;
 use Database\Seeders\Finance\DefaultCategoriesSeeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use PDOException;
 
 /** Account creation and password reset, used only by the server commands: there is no sign up. */
 class OwnerAccounts
@@ -65,6 +67,10 @@ class OwnerAccounts
         });
 
         // Cleanup only: the new remember_token already revoked these sessions (SessionMark).
-        DB::connection('pgsql_infra')->table('sessions')->where('user_id', $userId)->delete();
+        try {
+            DB::connection('pgsql_infra')->table('sessions')->where('user_id', $userId)->delete();
+        } catch (PDOException $e) {
+            Log::warning('session cleanup failed after password reset', ['sqlstate' => (string) $e->getCode()]);
+        }
     }
 }

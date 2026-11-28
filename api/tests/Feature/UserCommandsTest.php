@@ -2,6 +2,7 @@
 
 use App\Auth\OwnerAccounts;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -108,6 +109,31 @@ it('resets the password and signs the user out everywhere', function () {
     (new Browser($this))->signIn($email, NEW_PASSWORD)->assertStatus(422);
     (new Browser($this))->signIn($email, 'another-long-password')->assertOk();
 });
+
+it('never prints database messages, which quote the values', function (string $command) {
+    $secret = 'segredo@example.test';
+    app()->instance(OwnerAccounts::class, new class(app(TenantContext::class), $secret) extends OwnerAccounts
+    {
+        public function __construct(TenantContext $tenant, private string $leak)
+        {
+            parent::__construct($tenant);
+        }
+
+        public function findId(string $email): ?string
+        {
+            throw new QueryException('pgsql', 'select ?', [$this->leak, '$2y$hash'], new PDOException("detail {$this->leak}"));
+        }
+    });
+
+    $run = $command === 'cortex:user:create'
+        ? $this->artisan($command)->expectsQuestion('Nome', 'X')->expectsQuestion('E-mail', $secret)
+        : $this->artisan($command, ['email' => $secret]);
+
+    $run->expectsOutputToContain('Erro no banco de dados')
+        ->doesntExpectOutputToContain($secret)
+        ->doesntExpectOutputToContain('$2y$hash')
+        ->assertFailed();
+})->with(['cortex:user:create', 'cortex:user:reset-password']);
 
 it('reports an unknown e-mail', function () {
     $this->artisan('cortex:user:reset-password', ['email' => 'nobody@example.test'])

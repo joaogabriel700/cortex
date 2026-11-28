@@ -4,13 +4,14 @@ namespace App\Console\Commands;
 
 use App\Auth\OwnerAccounts;
 use App\Console\Commands\Concerns\AsksNewPassword;
+use App\Console\Commands\Concerns\HidesDatabaseErrors;
 use Illuminate\Console\Command;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Validator;
 
 class CreateUser extends Command
 {
-    use AsksNewPassword;
+    use AsksNewPassword, HidesDatabaseErrors;
 
     protected $signature = 'cortex:user:create
         {--locale=pt-BR : pt-BR or en}
@@ -42,6 +43,12 @@ class CreateUser extends Command
             return self::FAILURE;
         }
 
+        return $this->hidingDatabaseErrors(fn () => $this->createAccount($accounts, $data));
+    }
+
+    /** @param  array{name: string, email: string, locale: string, timezone: string}  $data */
+    private function createAccount(OwnerAccounts $accounts, array $data): int
+    {
         if ($accounts->findId($data['email']) !== null) {
             $this->error('Já existe um usuário com esse e-mail.');
 
