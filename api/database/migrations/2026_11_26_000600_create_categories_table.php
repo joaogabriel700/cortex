@@ -36,14 +36,21 @@ return new class extends Migration
             LANGUAGE plpgsql
             SET search_path = pg_catalog, public, pg_temp
             AS $$
+            DECLARE
+              c public.categories%ROWTYPE;
             BEGIN
               PERFORM public.assert_row_context(NEW.user_id);
 
-              IF NEW.parent_id IS NOT NULL AND (
-                   EXISTS (SELECT 1 FROM public.categories
-                           WHERE user_id = NEW.user_id AND id = NEW.parent_id AND parent_id IS NOT NULL)
-                   OR EXISTS (SELECT 1 FROM public.categories
-                              WHERE user_id = NEW.user_id AND parent_id = NEW.id AND deleted_at IS NULL)) THEN
+              -- Deferred: judge the row as it is now, not as it was when the trigger was queued.
+              SELECT * INTO c FROM public.categories WHERE id = NEW.id;
+              IF NOT FOUND OR c.deleted_at IS NOT NULL OR c.parent_id IS NULL THEN
+                RETURN NULL;
+              END IF;
+
+              IF EXISTS (SELECT 1 FROM public.categories
+                          WHERE user_id = c.user_id AND id = c.parent_id AND parent_id IS NOT NULL)
+                 OR EXISTS (SELECT 1 FROM public.categories
+                             WHERE user_id = c.user_id AND parent_id = c.id AND deleted_at IS NULL) THEN
                 RAISE EXCEPTION 'category_depth';
               END IF;
               RETURN NULL;
