@@ -1,6 +1,7 @@
 <?php
 
 return [
+    'currency_counter_amount' => 'Send the received amount only when the currencies differ',
     'category_depth' => 'Categories have at most two levels',
     'currency_immutable' => 'The currency cannot change once the account is in use',
     'identity_field_immutable' => 'This field cannot be changed',

@@ -95,6 +95,31 @@ abstract class RecordWriter
     /** Replaces the whole record when $ifMatch is still its version. */
     public function update(string $userId, string $id, ?string $ifMatch, array $input): object
     {
+        $current = $this->lockCurrent($userId, $id, $ifMatch);
+
+        $data = $this->normalize(Fields::check($input, $this->rules($current)));
+        $this->checkReferences($userId, $current->id, $data, $current);
+
+        $this->change($userId, $current, $data, $this->nextInstant($current));
+
+        return $this->find($userId, $current->id);
+    }
+
+    /** Soft delete, only for the entities whose controller exposes it. */
+    public function delete(string $userId, string $id, ?string $ifMatch): void
+    {
+        $current = $this->lockCurrent($userId, $id, $ifMatch);
+        $this->guardDelete($current);
+        $at = $this->nextInstant($current);
+
+        $this->change($userId, $current, ['deleted_at' => $at], $at);
+    }
+
+    protected function guardDelete(object $current): void {}
+
+    /** Locks the user's writes and returns the live record, if $ifMatch is still its version. */
+    private function lockCurrent(string $userId, string $id, ?string $ifMatch): object
+    {
         if ($ifMatch === null || $ifMatch === '') {
             throw new ProblemException('precondition_required', 428);
         }
@@ -110,19 +135,23 @@ abstract class RecordWriter
             throw new ProblemException('version_conflict', 412, ['current' => $this->toArray($current)]);
         }
 
-        $data = $this->normalize(Fields::check($input, $this->rules($current)));
-        $this->checkReferences($userId, $current->id, $data, $current);
+        return $current;
+    }
 
-        // Always after the stored value, even with a clock behind it ("last edit wins").
+    /** Always after the stored value, even with a clock behind it ("last edit wins"). */
+    private function nextInstant(object $current): string
+    {
         $now = Carbon::now('UTC');
         $next = Carbon::parse($current->updated_at)->utc()->addMicrosecond();
-        $updatedAt = $this->databaseInstant($now->greaterThan($next) ? $now : $next);
 
+        return $this->databaseInstant($now->greaterThan($next) ? $now : $next);
+    }
+
+    private function change(string $userId, object $current, array $data, string $updatedAt): void
+    {
         $this->write(fn () => DB::table($this->table())
             ->where('user_id', $userId)->where('id', $current->id)
             ->update($data + ['updated_at' => $updatedAt, 'last_device_id' => null]));
-
-        return $this->find($userId, $current->id);
     }
 
     protected function guardCreate(array $input): void {}

@@ -37,6 +37,11 @@ class Browser
         return $this->send('PUT', $uri, $data, $headers + $this->csrf());
     }
 
+    public function delete(string $uri, array $headers = []): TestResponse
+    {
+        return $this->send('DELETE', $uri, [], $headers + $this->csrf());
+    }
+
     /** @return array<string, string> */
     public function csrf(): array
     {
@@ -63,7 +68,7 @@ class Browser
         }
 
         $response = $this->test->call($method, $uri, [], $this->cookies, [], $server,
-            $method === 'GET' ? null : json_encode((object) $data));
+            in_array($method, ['GET', 'DELETE'], true) ? null : json_encode((object) $data));
 
         foreach ($response->headers->getCookies() as $cookie) {
             $this->cookies[$cookie->getName()] = (string) $cookie->getValue();
