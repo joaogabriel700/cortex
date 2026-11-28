@@ -1,6 +1,16 @@
 <?php
 
 return [
+    'category_depth' => 'Categorias têm no máximo dois níveis',
+    'currency_immutable' => 'A moeda não pode mudar depois que a conta é usada',
+    'identity_field_immutable' => 'Este campo não pode ser alterado',
+    'invalid_id_version' => 'Identificador inválido',
+    'invalid_reference' => 'Um item relacionado não existe',
+    'precondition_required' => 'Informe a versão que está sendo alterada',
+    'system_key_reserved' => 'Categorias padrão são criadas pelo servidor',
+    'user_mismatch' => 'Esta tela é de outra conta',
+    'version_conflict' => 'O registro mudou. Recarregue antes de salvar',
+    'write_rejected' => 'Não foi possível gravar este registro',
     'csrf_token_mismatch' => 'A verificação de segurança expirou. Tente de novo',
     'forbidden' => 'Acesso não permitido',
     'internal_error' => 'Erro interno',

@@ -29,9 +29,20 @@ class Browser
     /** A write with the CSRF token of the cookie, as the web app does. */
     public function post(string $uri, array $data = [], array $headers = []): TestResponse
     {
+        return $this->send('POST', $uri, $data, $headers + $this->csrf());
+    }
+
+    public function put(string $uri, array $data = [], array $headers = []): TestResponse
+    {
+        return $this->send('PUT', $uri, $data, $headers + $this->csrf());
+    }
+
+    /** @return array<string, string> */
+    public function csrf(): array
+    {
         $token = $this->cookies['XSRF-TOKEN'] ?? null;
 
-        return $this->send('POST', $uri, $data, $headers + ($token === null ? [] : ['X-XSRF-TOKEN' => $token]));
+        return $token === null ? [] : ['X-XSRF-TOKEN' => $token];
     }
 
     public function send(string $method, string $uri, array $data = [], array $headers = []): TestResponse

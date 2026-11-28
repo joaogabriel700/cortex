@@ -4,6 +4,8 @@ require_once __DIR__.'/secrets.php';
 
 use App\Http\Middleware\ApiSecurityHeaders;
 use App\Http\Middleware\ApplyTenantContext;
+use App\Http\Middleware\LimitApiBody;
+use App\Http\Middleware\RequireCortexUser;
 use App\Http\Middleware\SetRequestLocale;
 use App\Http\Middleware\VerifySessionMark;
 use App\Support\Http\Problem;
@@ -24,6 +26,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->prepend(ApiSecurityHeaders::class);
+        $middleware->append(LimitApiBody::class);
 
         // Reject unexpected Host headers (not applied in local and testing environments).
         // The loopback names serve the container health check.
@@ -42,10 +45,15 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Authenticated routes: authentication, session revocation, then the tenant
         // transaction, always before route model binding.
-        $middleware->alias(['session.mark' => VerifySessionMark::class, 'tenant' => ApplyTenantContext::class]);
+        $middleware->alias([
+            'session.mark' => VerifySessionMark::class,
+            'cortex.user' => RequireCortexUser::class,
+            'tenant' => ApplyTenantContext::class,
+        ]);
         $middleware->prependToPriorityList(SubstituteBindings::class, ApplyTenantContext::class);
-        $middleware->prependToPriorityList(ApplyTenantContext::class, VerifySessionMark::class);
-        $middleware->group('authenticated', ['auth:sanctum', 'session.mark', 'tenant']);
+        $middleware->prependToPriorityList(ApplyTenantContext::class, RequireCortexUser::class);
+        $middleware->prependToPriorityList(RequireCortexUser::class, VerifySessionMark::class);
+        $middleware->group('authenticated', ['auth:sanctum', 'session.mark', 'cortex.user', 'tenant']);
 
         // Only trust forwarding headers from the configured proxy ranges.
         $proxies = array_values(array_filter(array_map('trim', explode(',', (string) env('TRUSTED_PROXIES', '')))));
