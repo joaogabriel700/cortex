@@ -63,7 +63,8 @@ return [
 
     'providers' => [
         'users' => [
-            'driver' => 'eloquent',
+            // Eloquent inside the user's own tenant context (row level security).
+            'driver' => 'tenant',
             'model' => env('AUTH_MODEL', User::class),
         ],
 
