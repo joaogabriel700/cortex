@@ -4,17 +4,23 @@ namespace App\Console\Commands;
 
 use App\Auth\OwnerAccounts;
 use App\Console\Commands\Concerns\AsksNewPassword;
+use App\Console\Commands\Concerns\HidesDatabaseErrors;
 use Illuminate\Console\Command;
 
 class ResetUserPassword extends Command
 {
-    use AsksNewPassword;
+    use AsksNewPassword, HidesDatabaseErrors;
 
     protected $signature = 'cortex:user:reset-password {email : E-mail of the account}';
 
     protected $description = 'Set a new password and sign the user out of every device';
 
     public function handle(OwnerAccounts $accounts): int
+    {
+        return $this->hidingDatabaseErrors(fn () => $this->reset($accounts));
+    }
+
+    private function reset(OwnerAccounts $accounts): int
     {
         $userId = $accounts->findId((string) $this->argument('email'));
 

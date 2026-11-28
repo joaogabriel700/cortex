@@ -5,6 +5,7 @@ namespace App\Support\Tenancy;
 use Closure;
 use Illuminate\Support\Facades\DB;
 use LogicException;
+use PDOException;
 use Throwable;
 
 /**
@@ -75,6 +76,10 @@ class TenantContext
     {
         try {
             DB::commit();
+        } catch (PDOException $e) {
+            DB::rollBack(0);
+
+            throw new CommitFailedException((string) $e->getCode());
         } catch (Throwable $e) {
             DB::rollBack(0);
 

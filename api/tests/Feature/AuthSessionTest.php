@@ -274,8 +274,14 @@ it('counts a whole IPv6 /64 as one address', function () {
         ->and(AuthServiceProvider::network('203.0.113.5'))->toBe('203.0.113.5');
 });
 
-it('exposes only the authentication routes of this stage', function () {
-    $routes = collect(app('router')->getRoutes()->getRoutes())->map->uri()->filter(fn ($uri) => str_starts_with($uri, 'api/v1'));
+it('exposes only the routes built so far', function () {
+    $routes = collect(app('router')->getRoutes()->getRoutes())
+        ->filter(fn ($route) => str_starts_with($route->uri(), 'api/v1'))
+        ->map(fn ($route) => $route->methods()[0].' '.$route->uri());
 
-    expect($routes->sort()->values()->all())->toBe(['api/v1/auth/login', 'api/v1/auth/logout', 'api/v1/auth/session']);
+    expect($routes->sort()->values()->all())->toBe([
+        'GET api/v1/accounts', 'GET api/v1/accounts/{id}', 'GET api/v1/auth/session', 'GET api/v1/categories',
+        'POST api/v1/accounts', 'POST api/v1/auth/login', 'POST api/v1/auth/logout', 'POST api/v1/categories',
+        'PUT api/v1/accounts/{id}', 'PUT api/v1/categories/{id}',
+    ]);
 });

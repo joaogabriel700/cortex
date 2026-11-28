@@ -1,6 +1,16 @@
 <?php
 
 return [
+    'category_depth' => 'Categories have at most two levels',
+    'currency_immutable' => 'The currency cannot change once the account is in use',
+    'identity_field_immutable' => 'This field cannot be changed',
+    'invalid_id_version' => 'Invalid identifier',
+    'invalid_reference' => 'A related item does not exist',
+    'precondition_required' => 'Send the version being changed',
+    'system_key_reserved' => 'Default categories are created by the server',
+    'user_mismatch' => 'This screen belongs to another account',
+    'version_conflict' => 'The record changed. Reload before saving',
+    'write_rejected' => 'This record could not be saved',
     'csrf_token_mismatch' => 'The security check expired. Try again',
     'forbidden' => 'Access not allowed',
     'internal_error' => 'Internal error',

@@ -84,17 +84,19 @@ class SessionController extends Controller
     /** @return array{email: string, password: string} */
     private function validateLogin(Request $request): array
     {
-        $rules = [
+        $validator = Validator::make($request->post(), [
             'email' => ['bail', 'required', 'string', 'email', 'max:254'],
             'password' => ['bail', 'required', 'string', 'max:200'],
-        ];
+        ]);
 
         // The contract refuses unknown fields.
-        foreach (array_diff(array_keys($request->post()), self::LOGIN_FIELDS) as $unknown) {
-            $rules[$unknown] = ['prohibited'];
-        }
+        $validator->after(function ($validator) use ($request): void {
+            foreach (array_diff(array_keys($request->post()), self::LOGIN_FIELDS) as $unknown) {
+                $validator->addFailure((string) $unknown, 'prohibited');
+            }
+        });
 
-        $validated = Validator::make($request->post(), $rules)->validate();
+        $validated = $validator->validate();
 
         return ['email' => $validated['email'], 'password' => $validated['password']];
     }

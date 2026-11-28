@@ -3,6 +3,7 @@
 namespace App\Support\Http;
 
 use App\Http\Middleware\SetRequestLocale;
+use App\Support\Tenancy\CommitFailedException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -45,14 +46,15 @@ class Problem
 
         return match (true) {
             $e instanceof ValidationException => self::make('validation_failed', 422, extra: ['errors' => self::errors($e)]),
-            $e instanceof ProblemException => self::make($e->problem, $e->status),
+            $e instanceof ProblemException => self::make($e->problem, $e->status, extra: $e->extra),
             $e instanceof AuthenticationException => self::make('unauthenticated', 401),
             $e instanceof HttpExceptionInterface => self::make(
                 self::BY_STATUS[$e->getStatusCode()] ?? 'internal_error', $e->getStatusCode(), $e->getHeaders(),
             ),
-            $e instanceof QueryException && in_array((string) $e->getCode(), self::TRANSIENT_SQLSTATES, true) => self::make(
-                'temporarily_unavailable', 503, ['Retry-After' => 2],
-            ),
+            ($e instanceof QueryException || $e instanceof CommitFailedException)
+                && in_array((string) $e->getCode(), self::TRANSIENT_SQLSTATES, true) => self::make(
+                    'temporarily_unavailable', 503, ['Retry-After' => 2],
+                ),
             default => self::make('internal_error', 500),
         };
     }
