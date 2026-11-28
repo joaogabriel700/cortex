@@ -48,6 +48,31 @@ class Values
         };
     }
 
+    public static function positiveCents(bool $nullable = false): Closure
+    {
+        $integer = self::integer(1, self::MAX_CENTS);
+
+        return fn (mixed $v): ?string => $v === null && $nullable ? null : $integer($v);
+    }
+
+    /** Free text kept as sent: may be empty. Valid UTF-8, no NUL, at most $max characters. */
+    public static function freeText(int $max, bool $nullable = false): Closure
+    {
+        return fn (mixed $v): ?string => match (true) {
+            $v === null => $nullable ? null : 'required',
+            ! is_string($v) => 'string',
+            ! mb_check_encoding($v, 'UTF-8') || str_contains($v, "\0") => 'invalid',
+            mb_strlen($v, 'UTF-8') > $max => 'max',
+            default => null,
+        };
+    }
+
+    /** A field of the contract that this stage does not accept yet. */
+    public static function onlyNull(): Closure
+    {
+        return fn (mixed $v): ?string => $v === null ? null : 'prohibited';
+    }
+
     public static function cents(): Closure
     {
         return self::integer(-self::MAX_CENTS, self::MAX_CENTS);

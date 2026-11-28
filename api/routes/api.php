@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\SessionController;
 use App\Http\Controllers\Finance\AccountController;
 use App\Http\Controllers\Finance\CategoryController;
+use App\Http\Controllers\Finance\TransactionController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\Internal\TickController;
 use Illuminate\Support\Facades\Route;
@@ -23,7 +24,7 @@ Route::prefix('v1/auth')->name('auth.')->group(function (): void {
 });
 
 // POST and PUT are the online writes of the first delivery, until the sync exists.
-// No DELETE: records are archived (archived_at).
+// Accounts and categories have no DELETE: they are archived (archived_at).
 Route::prefix('v1')->middleware(['authenticated', 'throttle:authenticated'])->group(function (): void {
     Route::get('/accounts', [AccountController::class, 'index'])->name('accounts.index');
     Route::post('/accounts', [AccountController::class, 'store'])->name('accounts.store');
@@ -33,4 +34,10 @@ Route::prefix('v1')->middleware(['authenticated', 'throttle:authenticated'])->gr
     Route::get('/categories', [CategoryController::class, 'index'])->name('categories.index');
     Route::post('/categories', [CategoryController::class, 'store'])->name('categories.store');
     Route::put('/categories/{id}', [CategoryController::class, 'update'])->whereUuid('id')->name('categories.update');
+
+    Route::get('/transactions', [TransactionController::class, 'index'])->name('transactions.index');
+    Route::post('/transactions', [TransactionController::class, 'store'])->name('transactions.store');
+    Route::get('/transactions/{id}', [TransactionController::class, 'show'])->whereUuid('id')->name('transactions.show');
+    Route::put('/transactions/{id}', [TransactionController::class, 'update'])->whereUuid('id')->name('transactions.update');
+    Route::delete('/transactions/{id}', [TransactionController::class, 'destroy'])->whereUuid('id')->name('transactions.destroy');
 });

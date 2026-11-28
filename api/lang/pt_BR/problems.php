@@ -1,6 +1,7 @@
 <?php
 
 return [
+    'currency_counter_amount' => 'Informe o valor recebido só quando as moedas forem diferentes',
     'category_depth' => 'Categorias têm no máximo dois níveis',
     'currency_immutable' => 'A moeda não pode mudar depois que a conta é usada',
     'identity_field_immutable' => 'Este campo não pode ser alterado',

@@ -1,6 +1,7 @@
 <?php
 
 return [
+    'same_account' => 'Escolha uma conta diferente da origem.',
     'required' => 'Campo obrigatório.',
     'prohibited' => 'Campo não permitido.',
     'string' => 'Informe um texto.',

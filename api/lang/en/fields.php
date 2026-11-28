@@ -1,6 +1,7 @@
 <?php
 
 return [
+    'same_account' => 'Choose an account other than the source.',
     'required' => 'Required field.',
     'prohibited' => 'Field not allowed.',
     'string' => 'Must be text.',

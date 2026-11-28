@@ -280,8 +280,11 @@ it('exposes only the routes built so far', function () {
         ->map(fn ($route) => $route->methods()[0].' '.$route->uri());
 
     expect($routes->sort()->values()->all())->toBe([
+        'DELETE api/v1/transactions/{id}',
         'GET api/v1/accounts', 'GET api/v1/accounts/{id}', 'GET api/v1/auth/session', 'GET api/v1/categories',
+        'GET api/v1/transactions', 'GET api/v1/transactions/{id}',
         'POST api/v1/accounts', 'POST api/v1/auth/login', 'POST api/v1/auth/logout', 'POST api/v1/categories',
-        'PUT api/v1/accounts/{id}', 'PUT api/v1/categories/{id}',
+        'POST api/v1/transactions',
+        'PUT api/v1/accounts/{id}', 'PUT api/v1/categories/{id}', 'PUT api/v1/transactions/{id}',
     ]);
 });

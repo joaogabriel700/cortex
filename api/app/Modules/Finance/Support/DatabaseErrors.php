@@ -8,7 +8,7 @@ use Illuminate\Database\QueryException;
 /** Turns database refusals into codes of the contract, without the PostgreSQL message. */
 class DatabaseErrors
 {
-    private const RAISED = ['currency_immutable' => 409, 'category_depth' => 422];
+    private const RAISED = ['currency_immutable' => 409, 'category_depth' => 422, 'currency_counter_amount' => 422];
 
     public static function toProblem(QueryException $e): ProblemException|QueryException
     {
